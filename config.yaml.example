@@ -1,0 +1,7 @@
+db_host: <your host IP>
+db_name: synapse
+db_user: synapse
+db_password: <your password>
+room_id: <your internal room id>
+output_directory: <where your generated files will go>
+log_level: INFO
