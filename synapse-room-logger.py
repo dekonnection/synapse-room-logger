@@ -7,8 +7,8 @@ Usage:
     roomlogger daemon [options]
 
 Options:
-    --help          This helper.
-    --debug         Be more verbose.
+    --help          This helper
+    --debug         Increase verbosity
 """
 
 from docopt import docopt
@@ -17,6 +17,7 @@ import yaml
 import logging
 import json
 from datetime import datetime
+from sys import exit
 
 with open("config.yaml", "r") as config_file:
     config = yaml.load(config_file)
@@ -178,8 +179,19 @@ class SynapseRoomLogger(object):
             )
             return False
 
-    def cron(self):
-        pass
+    def run_cron(self):
+        logging.info(
+            'Starting with the "cron" parameter, we will run once and then exit.'
+        )
+        self.request_messages()
+        logging.info("Nothing more to be done, we will exit.")
+        exit(0)
+
+    def run_daemon(self):
+        logging.info("Starting in daemon mode.")
+        logging.warning("Daemon mode is not yet implemented.")
+        logging.info("Nothing more to be done, we will exit.")
+        exit(1)
 
 
 def main():
@@ -199,8 +211,10 @@ def main():
 
     srl = SynapseRoomLogger(config)
 
-    srl.request_messages()
-    return True
+    if arguments["cron"]:
+        srl.run_cron()
+    elif arguments["daemon"]:
+        srl.run_daemon()
 
 
 if __name__ == "__main__":
