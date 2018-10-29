@@ -17,6 +17,7 @@ import yaml
 import logging
 import json
 from datetime import datetime
+from time import sleep
 from sys import exit
 
 with open("config.yaml", "r") as config_file:
@@ -31,6 +32,7 @@ class SynapseRoomLogger(object):
         self.db_user = config["db_user"]
         self.db_password = config["db_password"]
         self.output_directory = config["output_directory"]
+        self.daemon_interval = config["daemon_interval"]
         state_file_name = ".last_ts"
         self.state_file_path = "{}/{}".format(
             config["output_directory"], state_file_name
@@ -148,7 +150,7 @@ class SynapseRoomLogger(object):
                 return True
         except FileNotFoundError:
             self.last_ts_written = 0
-            logging.warn(
+            logging.warning(
                 "No state file found at {}, setting last timestamp written to 0.".format(
                     self.state_file_path
                 )
@@ -189,9 +191,17 @@ class SynapseRoomLogger(object):
 
     def run_daemon(self):
         logging.info("Starting in daemon mode.")
-        logging.warning("Daemon mode is not yet implemented.")
+        while True:
+            logging.info("Starting a new iteration.")
+            self.request_messages()
+            logging.info("Iteration finished.")
+            try:
+                sleep(self.daemon_interval)
+            except KeyboardInterrupt:
+                logging.warning("Ctrl-C received, stopping daemon.")
+                break
         logging.info("Nothing more to be done, we will exit.")
-        exit(1)
+        exit(0)
 
 
 def main():

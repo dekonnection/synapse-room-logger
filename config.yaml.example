@@ -5,3 +5,4 @@ db_password: <your password>
 room_id: <your internal room id>
 output_directory: <where your generated files will go>
 log_level: INFO
+daemon_interval: 300
