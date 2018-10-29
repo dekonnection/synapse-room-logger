@@ -25,8 +25,12 @@ with open("config.yaml", "r") as config_file:
 
 
 class SynapseRoomLogger(object):
+    """
+        Everything the tool will run is wrapped in this object.
+    """
+
     def __init__(self, config):
-        self.room_id = config["room_id"]
+        self.rooms = config["rooms"]
         self.db_host = config["db_host"]
         self.db_name = config["db_name"]
         self.db_user = config["db_user"]
@@ -39,6 +43,10 @@ class SynapseRoomLogger(object):
         )
 
     def db_connect(self):
+        """
+            Opens a connection to the database and set the relevant attributes.
+            Returns True if the connection is successful, False if not.
+        """
         logging.info("Connecting to database ...")
         try:
             conn = psycopg2.connect(
@@ -59,44 +67,20 @@ class SynapseRoomLogger(object):
             return False
 
     def db_disconnnect(self):
+        """
+            Closes the connection to the database.
+        """
         logging.info("Disconnecting from database ...")
         self.cur.close()
         self.conn.close()
         logging.info("Disconnected from database.")
 
-    def request_messages(self):
-        base_query = "SELECT e.received_ts, j.json FROM events AS e INNER JOIN event_json AS j USING (event_id) WHERE e.room_id=%s AND e.received_ts>%s AND e.type='m.room.message' ORDER BY e.received_ts;"
-
-        self.read_last_ts_written()
-
-        if not self.db_connect():
-            logging.info("We won't do anything this time")
-            return False
-
-        self.cur.execute(base_query, (self.room_id, self.last_ts_written))
-
-        for row in self.cur:
-            # there is two fields : timestamp at reception, and json data
-            line = self.process_message_row(row)
-            file_path = self.ts_to_filepath(line["ts"])
-
-            if self.append_line(file_path, json.dumps(line)):
-                logging.info(
-                    "Message with timestamp {} written to {}".format(
-                        line["ts"], file_path
-                    )
-                )
-                self.last_ts_written = line["ts"]
-            else:
-                logging.error(
-                    "We couldn't write message {}, we will exit.".format(line["ts"])
-                )
-                return False
-        self.write_last_ts_written()
-        self.db_disconnnect()
-        return True
-
     def process_message_row(self, message_row):
+        """
+            Filter a row returned by the query, keeping and converting only the
+            needed informations.
+            Takes a 2-items list as parameter, returns a dict.
+        """
         msg_received_ts = message_row[0]
         msg_raw_data = json.loads(message_row[1])
         msg_data = {
@@ -105,17 +89,29 @@ class SynapseRoomLogger(object):
             "origin": msg_raw_data["origin"],
             "sender": msg_raw_data["sender"],
             "event_id": msg_raw_data["event_id"],
+            "room_id": msg_raw_data["room_id"],
             "message": msg_raw_data["content"]["body"],
             "url": msg_raw_data["content"].get("url", None),
         }
         return msg_data
 
-    def ts_to_filepath(self, ts):
-        path = "{output_directory}/{date}.log"
-        date = datetime.utcfromtimestamp(ts / 1000).strftime("%Y-%m-%d")
-        return path.format(output_directory=self.output_directory, date=date)
+    def ts_to_filepath(self, timestamp, room_name):
+        """
+            Creates a filepath from timestamp and room name.
+            (all logs are written in one file per day)
+        """
+        path = "{output_directory}/{room_name}_{date}.log"
+        # synapse timestamps are in milliseconds
+        date = datetime.utcfromtimestamp(timestamp / 1000).strftime("%Y%m%d")
+        return path.format(
+            output_directory=self.output_directory, room_name=room_name, date=date
+        )
 
     def append_line(self, file_path, line):
+        """
+            Append a line to a file, creating it if doesn't exist.
+            Returns True if the write went well, False in the other case.
+        """
         try:
             with open(file_path, "a") as file:
                 file.write(line + "\n")
@@ -136,6 +132,11 @@ class SynapseRoomLogger(object):
             return False
 
     def read_last_ts_written(self):
+        """
+           Read the timestamp of the last record written from the state file,
+           and set the corresponding attribute.
+           Return True if ok, False if not.
+        """
         try:
             logging.info("Reading last timestamp written from previous run.")
             with open(self.state_file_path, "r") as file:
@@ -156,6 +157,10 @@ class SynapseRoomLogger(object):
             return False
 
     def write_last_ts_written(self):
+        """
+           Write the timestamp of the last record written to the state file.
+           Return True if ok, False if not.
+        """
         try:
             logging.info("Writing last timestamp to state file.")
             with open(self.state_file_path, "w") as file:
@@ -179,7 +184,51 @@ class SynapseRoomLogger(object):
             )
             return False
 
+    def request_messages(self):
+        """
+            The main method, here we launch the database connection, query the
+            DB and write the files, then disconnects.
+            Returns True if successful, False if not.
+        """
+        # we fetch messages from all rooms at the same time, we will route them at writing time
+        base_query = "SELECT e.received_ts, j.json FROM events AS e INNER JOIN event_json AS j USING (event_id) WHERE e.room_id IN %s AND e.received_ts>%s AND e.type='m.room.message' ORDER BY e.received_ts;"
+
+        self.read_last_ts_written()
+
+        if not self.db_connect():
+            logging.info("We won't do anything this time")
+            return False
+
+        self.cur.execute(base_query, (tuple(self.rooms.keys()), self.last_ts_written))
+
+        for row in self.cur:
+            # there are two fields per row : timestamp at reception, and json data
+            line = self.process_message_row(row)
+
+            # we get the room nickname in the config at the room_id key
+            room_name = self.rooms[line["room_id"]]
+            file_path = self.ts_to_filepath(timestamp=line["ts"], room_name=room_name)
+
+            if self.append_line(file_path, json.dumps(line)):
+                logging.info(
+                    "Message with timestamp {} written to {}".format(
+                        line["ts"], file_path
+                    )
+                )
+                self.last_ts_written = line["ts"]
+            else:
+                logging.error(
+                    "We couldn't write message {}, we will exit.".format(line["ts"])
+                )
+                return False
+        self.write_last_ts_written()
+        self.db_disconnnect()
+        return True
+
     def run_cron(self):
+        """
+            Starts only one run, and then exit.
+        """
         logging.info(
             'Starting with the "cron" parameter, we will run once and then exit.'
         )
@@ -188,6 +237,9 @@ class SynapseRoomLogger(object):
         exit(0)
 
     def run_daemon(self):
+        """
+            Starts a run every N seconds, sleeping between runs.
+        """
         logging.info("Starting in daemon mode.")
         while True:
             logging.info("Starting a new iteration.")
@@ -203,6 +255,9 @@ class SynapseRoomLogger(object):
 
 
 def main():
+    """
+        The main function, executed if the module is called directly.
+    """
     arguments = docopt(__doc__, version="0.1")
 
     if arguments["--debug"]:
