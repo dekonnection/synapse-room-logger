@@ -65,7 +65,7 @@ class SynapseRoomLogger(object):
         logging.info("Disconnected from database.")
 
     def request_messages(self):
-        base_query = "SELECT e.received_ts, j.json FROM events AS e INNER JOIN event_json AS j USING (event_id) WHERE e.room_id='{room_id}' AND e.received_ts>{after_ts} AND e.type='m.room.message' ORDER BY e.received_ts;"
+        base_query = "SELECT e.received_ts, j.json FROM events AS e INNER JOIN event_json AS j USING (event_id) WHERE e.room_id=%s AND e.received_ts>%s AND e.type='m.room.message' ORDER BY e.received_ts;"
 
         self.read_last_ts_written()
 
@@ -73,9 +73,7 @@ class SynapseRoomLogger(object):
             logging.info("We won't do anything this time")
             return False
 
-        self.cur.execute(
-            base_query.format(room_id=self.room_id, after_ts=self.last_ts_written)
-        )
+        self.cur.execute(base_query, (self.room_id, self.last_ts_written))
 
         for row in self.cur:
             # there is two fields : timestamp at reception, and json data
