@@ -1,9 +1,10 @@
-db_host: <your host IP>
+db_host: <your_host_IP>
 db_name: synapse
 db_user: synapse
-db_password: <your password>
+db_password: <your_password>
 rooms:
-  <a room id>: <a room nickname>
-output_directory: <where your generated files will go>
+  <room0_id>: <room0_nickname>
+  <room1_id>: <room1_nickname>
+output_directory: <where_your_generated_files_will_go>
 log_level: INFO
 daemon_interval: 300

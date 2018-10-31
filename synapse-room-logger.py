@@ -20,9 +20,6 @@ from datetime import datetime
 from time import sleep
 from sys import exit
 
-with open("config.yaml", "r") as config_file:
-    config = yaml.load(config_file)
-
 
 class SynapseRoomLogger(object):
     """
@@ -31,49 +28,19 @@ class SynapseRoomLogger(object):
 
     def __init__(self, config):
         self.rooms = config["rooms"]
-        self.db_host = config["db_host"]
-        self.db_name = config["db_name"]
-        self.db_user = config["db_user"]
-        self.db_password = config["db_password"]
+        self.db_config = {
+            "host": config["db_host"],
+            "database": config["db_name"],
+            "user": config["db_user"],
+            "password": config["db_password"],
+            "connect_timeout": 5,
+        }
         self.output_directory = config["output_directory"]
         self.daemon_interval = config["daemon_interval"]
         state_file_name = ".last_ts"
         self.state_file_path = "{}/{}".format(
             config["output_directory"], state_file_name
         )
-
-    def db_connect(self):
-        """
-            Opens a connection to the database and set the relevant attributes.
-            Returns True if the connection is successful, False if not.
-        """
-        logging.info("Connecting to database ...")
-        try:
-            conn = psycopg2.connect(
-                host=self.db_host,
-                database=self.db_name,
-                user=self.db_user,
-                password=self.db_password,
-                connect_timeout=5,
-            )
-            self.conn = conn
-            self.cur = self.conn.cursor()
-            logging.info("Connected to database.")
-            return True
-        except psycopg2.OperationalError as e:
-            logging.error(
-                'Could not connect to database : "{}"'.format(str(e).rstrip())
-            )
-            return False
-
-    def db_disconnnect(self):
-        """
-            Closes the connection to the database.
-        """
-        logging.info("Disconnecting from database ...")
-        self.cur.close()
-        self.conn.close()
-        logging.info("Disconnected from database.")
 
     def process_message_row(self, message_row):
         """
@@ -191,38 +158,67 @@ class SynapseRoomLogger(object):
             Returns True if successful, False if not.
         """
         # we fetch messages from all rooms at the same time, we will route them at writing time
-        base_query = "SELECT e.received_ts, j.json FROM events AS e INNER JOIN event_json AS j USING (event_id) WHERE e.room_id IN %s AND e.received_ts>%s AND e.type='m.room.message' ORDER BY e.received_ts;"
+        base_query = (
+            "SELECT e.received_ts, j.json "
+            "FROM events AS e "
+            "INNER JOIN event_json AS j "
+            "USING (event_id) "
+            "WHERE e.room_id IN %s "
+            "AND e.received_ts>%s "
+            "AND e.type='m.room.message' "
+            "ORDER BY e.received_ts;"
+        )
 
         self.read_last_ts_written()
 
-        if not self.db_connect():
-            logging.info("We won't do anything this time")
+        try:
+            logging.info("Connecting to database ...")
+            with psycopg2.connect(**self.db_config) as conn:
+                logging.info("Connected to database.")
+                with conn.cursor() as cur:
+                    cur.execute(
+                        base_query, (tuple(self.rooms.keys()), self.last_ts_written)
+                    )
+
+                    for row in cur:
+                        # there are two fields per row : timestamp at reception, and json data
+                        line = self.process_message_row(row)
+
+                        # we get the room nickname in the config at the room_id key
+                        room_name = self.rooms[line["room_id"]]
+                        file_path = self.ts_to_filepath(
+                            timestamp=line["ts"], room_name=room_name
+                        )
+
+                        if self.append_line(file_path, json.dumps(line)):
+                            logging.info(
+                                "Message with timestamp {} written to {}".format(
+                                    line["ts"], file_path
+                                )
+                            )
+                            self.last_ts_written = line["ts"]
+                        else:
+                            logging.error(
+                                "We couldn't write message {}, we will exit.".format(
+                                    line["ts"]
+                                )
+                            )
+                            return False
+
+                    self.write_last_ts_written()
+
+            logging.info("Disconnecting from database ...")
+            conn.close()
+            logging.info("Disconnected from database.")
+            return True
+
+        except psycopg2.OperationalError as e:
+            logging.error(
+                'Could not connect to database : "{}"'.format(str(e).replace("\n", ""))
+            )
+
             return False
 
-        self.cur.execute(base_query, (tuple(self.rooms.keys()), self.last_ts_written))
-
-        for row in self.cur:
-            # there are two fields per row : timestamp at reception, and json data
-            line = self.process_message_row(row)
-
-            # we get the room nickname in the config at the room_id key
-            room_name = self.rooms[line["room_id"]]
-            file_path = self.ts_to_filepath(timestamp=line["ts"], room_name=room_name)
-
-            if self.append_line(file_path, json.dumps(line)):
-                logging.info(
-                    "Message with timestamp {} written to {}".format(
-                        line["ts"], file_path
-                    )
-                )
-                self.last_ts_written = line["ts"]
-            else:
-                logging.error(
-                    "We couldn't write message {}, we will exit.".format(line["ts"])
-                )
-                return False
-        self.write_last_ts_written()
-        self.db_disconnnect()
         return True
 
     def run_cron(self):
@@ -279,6 +275,9 @@ def main():
     elif arguments["daemon"]:
         srl.run_daemon()
 
+
+with open("config.yaml", "r") as config_file:
+    config = yaml.load(config_file)
 
 if __name__ == "__main__":
     main()
