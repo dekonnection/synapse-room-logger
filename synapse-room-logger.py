@@ -16,6 +16,7 @@ import psycopg2
 import yaml
 import logging
 import json
+import re
 from datetime import datetime
 from time import sleep
 from sys import exit
@@ -59,8 +60,18 @@ class SynapseRoomLogger(object):
             "room_id": msg_raw_data["room_id"],
             "message": msg_raw_data["content"]["body"],
             "url": msg_raw_data["content"].get("url", None),
+            "chat_type": "matrix",
+            "nick": self.sender_to_nick(msg_raw_data["sender"]),
         }
         return msg_data
+
+    def sender_to_nick(self, sender):
+        """
+            Extract the short nickname from the full Matrix sender id.
+        """
+        regex = re.compile('^@(.*):.*$')
+        nick = regex.match(sender).group(1)
+        return nick
 
     def ts_to_filepath(self, timestamp, room_name):
         """
