@@ -24,7 +24,7 @@ from sys import exit
 
 class SynapseRoomLogger(object):
     """
-        Everything the tool will run is wrapped in this object.
+    Everything the tool will run is wrapped in this object.
     """
 
     def __init__(self, config):
@@ -45,9 +45,9 @@ class SynapseRoomLogger(object):
 
     def process_message_row(self, message_row):
         """
-            Filter a row returned by the query, keeping and converting only the
-            needed informations.
-            Takes a 2-items list as parameter, returns a dict.
+        Filter a row returned by the query, keeping and converting only the
+        needed informations.
+        Takes a 2-items list as parameter, returns a dict.
         """
         msg_received_ts = message_row[0]
         msg_raw_data = json.loads(message_row[1])
@@ -67,16 +67,16 @@ class SynapseRoomLogger(object):
 
     def sender_to_nick(self, sender):
         """
-            Extract the short nickname from the full Matrix sender id.
+        Extract the short nickname from the full Matrix sender id.
         """
-        regex = re.compile('^@(.*):.*$')
+        regex = re.compile("^@(.*):.*$")
         nick = regex.match(sender).group(1)
         return nick
 
     def ts_to_filepath(self, timestamp, room_name):
         """
-            Creates a filepath from timestamp and room name.
-            (all logs are written in one file per day)
+        Creates a filepath from timestamp and room name.
+        (all logs are written in one file per day)
         """
         path = "{output_directory}/{room_name}_{date}.log"
         # synapse timestamps are in milliseconds
@@ -87,8 +87,8 @@ class SynapseRoomLogger(object):
 
     def append_line(self, file_path, line):
         """
-            Append a line to a file, creating it if doesn't exist.
-            Returns True if the write went well, False in the other case.
+        Append a line to a file, creating it if doesn't exist.
+        Returns True if the write went well, False in the other case.
         """
         try:
             with open(file_path, "a") as file:
@@ -111,9 +111,9 @@ class SynapseRoomLogger(object):
 
     def read_last_ts_written(self):
         """
-           Read the timestamp of the last record written from the state file,
-           and set the corresponding attribute.
-           Return True if ok, False if not.
+        Read the timestamp of the last record written from the state file,
+        and set the corresponding attribute.
+        Return True if ok, False if not.
         """
         try:
             logging.info("Reading last timestamp written from previous run.")
@@ -136,8 +136,8 @@ class SynapseRoomLogger(object):
 
     def write_last_ts_written(self):
         """
-           Write the timestamp of the last record written to the state file.
-           Return True if ok, False if not.
+        Write the timestamp of the last record written to the state file.
+        Return True if ok, False if not.
         """
         try:
             logging.info("Writing last timestamp to state file.")
@@ -164,9 +164,9 @@ class SynapseRoomLogger(object):
 
     def request_messages(self):
         """
-            The main method, here we launch the database connection, query the
-            DB and write the files, then disconnects.
-            Returns True if successful, False if not.
+        The main method, here we launch the database connection, query the
+        DB and write the files, then disconnects.
+        Returns True if successful, False if not.
         """
         # we fetch messages from all rooms at the same time, we will route them at writing time
         base_query = (
@@ -234,7 +234,7 @@ class SynapseRoomLogger(object):
 
     def run_cron(self):
         """
-            Starts only one run, and then exit.
+        Starts only one run, and then exit.
         """
         logging.info(
             'Starting with the "cron" parameter, we will run once and then exit.'
@@ -245,7 +245,7 @@ class SynapseRoomLogger(object):
 
     def run_daemon(self):
         """
-            Starts a run every N seconds, sleeping between runs.
+        Starts a run every N seconds, sleeping between runs.
         """
         logging.info("Starting in daemon mode.")
         while True:
@@ -263,7 +263,7 @@ class SynapseRoomLogger(object):
 
 def main():
     """
-        The main function, executed if the module is called directly.
+    The main function, executed if the module is called directly.
     """
     arguments = docopt(__doc__, version="0.1")
 
@@ -288,7 +288,7 @@ def main():
 
 
 with open("config.yaml", "r") as config_file:
-    config = yaml.load(config_file)
+    config = yaml.load(config_file, Loader=yaml.SafeLoader)
 
 if __name__ == "__main__":
     main()
